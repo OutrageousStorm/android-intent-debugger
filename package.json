@@ -1,0 +1,19 @@
+{
+  "name": "android-intent-debugger",
+  "version": "1.0.0",
+  "description": "Monitor and debug Android Intents via ADB logcat",
+  "main": "index.js",
+  "bin": {
+    "intent-debug": "index.js"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "android",
+    "intent",
+    "adb",
+    "debugging"
+  ],
+  "author": "OutrageousStorm"
+}
