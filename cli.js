@@ -1,76 +1,79 @@
 #!/usr/bin/env node
 /**
- * Intent Debugger — monitor and filter Android Intents in real-time
- * Usage: intent-debugger [--app package] [--action com.example] [--data scheme]
+ * cli.js -- Android Intent debugger CLI
+ * Usage: node cli.js monitor [--filter action] [--app package]
+ *        node cli.js send --action android.intent.action.SEND --type "text/plain"
  */
-
 const { exec } = require('child_process');
-const readline = require('readline');
+const fs = require('fs');
 
-class IntentMonitor {
-  constructor(options = {}) {
-    this.appFilter = options.app || null;
-    this.actionFilter = options.action || null;
-    this.dataFilter = options.data || null;
-    this.intents = [];
-  }
-
-  start() {
-    console.log('\n📡 Android Intent Monitor');
-    console.log('Filters:');
-    if (this.appFilter) console.log(`  Package: ${this.appFilter}`);
-    if (this.actionFilter) console.log(`  Action: ${this.actionFilter}`);
-    if (this.dataFilter) console.log(`  Data scheme: ${this.dataFilter}`);
-    console.log('\nPress Ctrl+C to stop\n');
-
-    const proc = exec('adb logcat ActivityManager:I *:S', (err) => {});
-    const rl = readline.createInterface({ input: proc.stdout });
-
-    rl.on('line', (line) => this.parseAndDisplay(line));
-  }
-
-  parseAndDisplay(line) {
-    // Match: Intent { act=android.intent.action.VIEW dat=https://... cmp=pkg/activity }
-    const match = line.match(/Intent\s*{\s*([^}]+)\s*}/);
-    if (!match) return;
-
-    const parts = match[1];
-    const action = (parts.match(/act=([^\s]+)/) || [])[1] || '';
-    const data = (parts.match(/dat=([^\s]+)/) || [])[1] || '';
-    const cmp = (parts.match(/cmp=([^\s]+)/) || [])[1] || '';
-    const pkg = cmp.split('/')[0];
-
-    // Apply filters
-    if (this.appFilter && !pkg.includes(this.appFilter)) return;
-    if (this.actionFilter && !action.includes(this.actionFilter)) return;
-    if (this.dataFilter && !data.includes(this.dataFilter)) return;
-
-    console.log(`\n📤 Intent`);
-    console.log(`  Package: ${pkg}`);
-    if (action) console.log(`  Action:  ${action.replace('android.intent.action.', '')}`);
-    if (data) console.log(`  Data:    ${data}`);
-    if (cmp) console.log(`  Target:  ${cmp}`);
-
-    this.intents.push({ action, data, cmp, timestamp: new Date() });
-  }
-
-  summary() {
-    console.log(`\n\nCaptured ${this.intents.length} intents`);
-    const actions = [...new Set(this.intents.map(i => i.action))];
-    console.log('Unique actions: ' + actions.slice(0, 5).join(', '));
-  }
+function adb(cmd) {
+    return new Promise((resolve, reject) => {
+        exec(`adb shell ${cmd}`, (err, stdout, stderr) => {
+            resolve(stdout || stderr || '');
+        });
+    });
 }
 
-const args = require('minimist')(process.argv.slice(2));
-const monitor = new IntentMonitor({
-  app: args.app,
-  action: args.action,
-  data: args.data
-});
+async function monitor(filter = null, appFilter = null) {
+    console.log('\n🔍 Intent Monitor\n');
+    const proc = require('child_process').spawn('adb', ['logcat', '-v', 'time', 'ActivityManager:I', '*:S']);
+    
+    proc.stdout.on('data', (data) => {
+        const line = data.toString();
+        if (line.includes('Intent')) {
+            const match = line.match(/Intent\s*{\s*([^}]+)\s*}/);
+            if (match) {
+                const intent = match[1];
+                if (filter && !intent.includes(filter)) return;
+                if (appFilter && !intent.includes(appFilter)) return;
+                console.log(`[${new Date().toLocaleTimeString()}] ${intent}`);
+            }
+        }
+    });
+    
+    process.on('SIGINT', () => {
+        proc.kill();
+        console.log('\nStopped.');
+        process.exit(0);
+    });
+}
 
-process.on('SIGINT', () => {
-  monitor.summary();
-  process.exit(0);
-});
+async function sendIntent(action, type = null, data = null) {
+    let cmd = `am start -a ${action}`;
+    if (type) cmd += ` -t ${type}`;
+    if (data) cmd += ` -d ${data}`;
+    const result = await adb(cmd);
+    console.log(`✓ Sent: ${action}`);
+    console.log(result || 'Intent fired');
+}
 
-monitor.start();
+async function main() {
+    const args = process.argv.slice(2);
+    
+    if (args[0] === 'monitor') {
+        let filterAction = null;
+        let filterApp = null;
+        for (let i = 1; i < args.length; i++) {
+            if (args[i] === '--filter') filterAction = args[++i];
+            if (args[i] === '--app') filterApp = args[++i];
+        }
+        await monitor(filterAction, filterApp);
+    } else if (args[0] === 'send') {
+        let action = null, type = null, data = null;
+        for (let i = 1; i < args.length; i++) {
+            if (args[i] === '--action') action = args[++i];
+            if (args[i] === '--type') type = args[++i];
+            if (args[i] === '--data') data = args[++i];
+        }
+        if (!action) {
+            console.log('Usage: node cli.js send --action <action> [--type <type>] [--data <uri>]');
+            return;
+        }
+        await sendIntent(action, type, data);
+    } else {
+        console.log('Usage:\n  node cli.js monitor [--filter action] [--app package]\n  node cli.js send --action <action> [--type <type>]');
+    }
+}
+
+main();
