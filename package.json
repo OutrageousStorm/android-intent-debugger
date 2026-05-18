@@ -1,12 +1,1 @@
-{
-  "name": "android-intent-debugger",
-  "version": "1.0.0",
-  "type": "commonjs",
-  "bin": { "intent-debug": "index.js" },
-  "scripts": {
-    "start": "node index.js"
-  },
-  "dependencies": {
-    "minimist": "^1.2.8"
-  }
-}
+{"name":"intent-debugger","version":"1.0.0","description":"Monitor Android Intents in real-time","bin":{"intent-debugger":"cli.js"},"dependencies":{"minimist":"^1.2.8"}}
